@@ -208,11 +208,11 @@ fcli sc-sast scan wait-for ::myScan:: --timeout 1h --interval 30s
 Beim ersten Upload muss das Scan-Artefakt in SSC genehmigt werden. Das ist ein einmaliger Schritt pro Application Version und dient als Sicherheitsmaßnahme:
 
 ```bash
-# Artefakt-ID ermitteln
-fcli ssc artifact list --av IWA-Java:1.0
+# Artefakt-ID ermitteln und speichern
+fcli ssc artifact list --av IWA-Java:1.0 --store artifact
 
-# Artefakt genehmigen (ID aus dem vorherigen Befehl)
-fcli ssc artifact approve <ARTIFACT_ID>
+# Gespeicherte ID direkt zum Approven verwenden
+fcli ssc artifact approve ::artifact::
 ```
 
 Nach dem Approve wird das Artefakt verarbeitet und die Findings erscheinen in SSC.
