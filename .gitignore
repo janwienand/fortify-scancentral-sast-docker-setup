@@ -8,6 +8,9 @@ keystore_password
 truststore_password
 secret.key
 scancentral-authtoken
+scancentral-worker-auth-token
+scancentral-client-auth-token
+scancentral-ssc-scancentral-ctrl-secret
 
 # Environment
 .env

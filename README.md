@@ -56,7 +56,13 @@ cd fortify-scancentral-sast-docker-setup
 cp .env.example .env
 ```
 
-Falls deine SSC-Instanz nicht auf dem gleichen Docker-Netzwerk läuft, passe die `SCANCENTRAL_SSC_URL` in der `.env` an.
+Falls deine SSC-Instanz nicht auf dem gleichen Docker-Netzwerk läuft, passe `SCANCENTRAL_CONFIG_SSC_URL` in der `.env` an.
+
+**Wichtig:** Der `DOCKER_NETWORK_NAME` muss mit dem Netzwerk übereinstimmen, in dem SSC läuft. Prüfe das mit:
+
+```bash
+docker network ls | grep fortify
+```
 
 ### 3. Fortify-Lizenz ablegen
 
@@ -66,10 +72,13 @@ cp /pfad/zu/fortify.license volumes/secrets/fortify.license
 
 ### 4. Auth-Token generieren
 
-Dieses Token wird zwischen SSC, Controller und Worker geteilt:
+Das gleiche Token wird für Worker, Client und SSC-Secret verwendet:
 
 ```bash
-openssl rand -hex 32 > volumes/secrets/scancentral-authtoken
+AUTH_TOKEN=$(openssl rand -hex 32)
+echo -n "$AUTH_TOKEN" > volumes/secrets/scancentral-worker-auth-token
+echo -n "$AUTH_TOKEN" > volumes/secrets/scancentral-client-auth-token
+echo -n "$AUTH_TOKEN" > volumes/secrets/scancentral-ssc-scancentral-ctrl-secret
 ```
 
 ### 5. HTTPS-Zertifikat erstellen
@@ -79,20 +88,20 @@ openssl rand -hex 32 > volumes/secrets/scancentral-authtoken
 KEYSTORE_PASSWORD=$(openssl rand -base64 24)
 echo -n "$KEYSTORE_PASSWORD" > volumes/secrets/keystore_password
 
-# Keystore für den Controller
+# JKS Keystore für den Controller
 keytool -genkeypair \
     -alias scancentral \
     -keyalg RSA -keysize 2048 -validity 365 \
-    -storetype PKCS12 \
-    -keystore volumes/secrets/scancentral-keystore.pfx \
-    -storepass "$KEYSTORE_PASSWORD" \
+    -storetype JKS \
+    -keystore volumes/secrets/httpKeystore.jks \
+    -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" \
     -dname "CN=sast-ctrl, OU=Fortify, O=OpenText" \
     -ext "SAN=DNS:sast-ctrl,DNS:localhost,IP:127.0.0.1"
 
 # Zertifikat exportieren und Truststore für den Worker erstellen
 keytool -exportcert \
     -alias scancentral \
-    -keystore volumes/secrets/scancentral-keystore.pfx \
+    -keystore volumes/secrets/httpKeystore.jks \
     -storepass "$KEYSTORE_PASSWORD" \
     -file /tmp/scancentral-cert.pem -rfc
 
@@ -102,7 +111,7 @@ echo -n "$TRUSTSTORE_PASSWORD" > volumes/secrets/truststore_password
 keytool -importcert \
     -alias scancentral \
     -file /tmp/scancentral-cert.pem \
-    -keystore volumes/secrets/scancentral-truststore.jks \
+    -keystore volumes/secrets/truststore.jks \
     -storepass "$TRUSTSTORE_PASSWORD" -noprompt
 
 rm /tmp/scancentral-cert.pem
@@ -133,11 +142,31 @@ docker compose up -d
 
 ### 8. ScanCentral SAST in SSC aktivieren
 
-1. Öffne die SSC-Administration: **https://localhost:8443**
-2. Gehe zu **Administration → Configuration → ScanCentral SAST**
-3. Aktiviere ScanCentral SAST
-4. Trage die Controller-URL ein: `https://sast-ctrl:8443/scancentral-ctrl`
-5. Trage das Auth-Token ein (Inhalt von `volumes/secrets/scancentral-authtoken`)
+Nach dem Start der Container muss ScanCentral SAST in der SSC-Administration konfiguriert werden:
+
+1. Öffne SSC im Browser: **https://localhost:8443**
+2. Melde dich an (Standard: `admin` / `admin`)
+3. Navigiere zu **Administration** (Zahnrad-Symbol oben rechts)
+4. Klicke links auf **Configuration** → **ScanCentral SAST**
+5. Aktiviere den Schalter **Enable ScanCentral SAST**
+6. Trage folgende Werte ein:
+
+| Feld | Wert |
+|---|---|
+| **ScanCentral SAST URL** | `https://sast-ctrl:8443/scancentral-ctrl` |
+| **SSC shared secret** | Inhalt von `volumes/secrets/scancentral-ssc-scancentral-ctrl-secret` |
+| **Worker auth token** | Inhalt von `volumes/secrets/scancentral-worker-auth-token` |
+
+Die Token-Werte kannst du mit folgendem Befehl auslesen:
+
+```bash
+cat volumes/secrets/scancentral-worker-auth-token
+```
+
+7. Klicke auf **Test Connection** – es sollte eine Erfolgsmeldung erscheinen
+8. Klicke auf **Save**
+
+Nach der Konfiguration sollte unter **Administration → ScanCentral SAST** der Worker als **Active** angezeigt werden.
 
 ## Architektur
 
@@ -190,20 +219,22 @@ docker compose ps
 
 ```
 fortify-scancentral-sast-docker-setup/
-├── .env.example              # Konfigurationsvorlage
+├── .env.example                      # Konfigurationsvorlage
 ├── .gitignore
-├── docker-compose.yml        # Container-Definition
+├── docker-compose.yml                # Container-Definition
 ├── README.md
-├── setup.sh                  # Automatisches Setup-Skript
+├── setup.sh                          # Automatisches Setup-Skript
 └── volumes/
-    ├── data/                 # Persistente Daten (wird erstellt)
+    ├── data/                         # Persistente Daten (wird erstellt)
     └── secrets/
-        ├── fortify.license           # ← Hier ablegen
-        ├── scancentral-authtoken     # Auth-Token (generiert)
-        ├── scancentral-keystore.pfx  # HTTPS-Keystore (generiert)
-        ├── scancentral-truststore.jks # Truststore für Worker (generiert)
-        ├── keystore_password         # Keystore-Passwort (generiert)
-        └── truststore_password       # Truststore-Passwort (generiert)
+        ├── fortify.license                          # ← Hier ablegen
+        ├── scancentral-worker-auth-token            # Worker Auth-Token (generiert)
+        ├── scancentral-client-auth-token            # Client Auth-Token (generiert)
+        ├── scancentral-ssc-scancentral-ctrl-secret  # SSC Shared Secret (generiert)
+        ├── httpKeystore.jks                         # HTTPS-Keystore (generiert)
+        ├── truststore.jks                           # Truststore für Worker (generiert)
+        ├── keystore_password                        # Keystore-Passwort (generiert)
+        └── truststore_password                      # Truststore-Passwort (generiert)
 ```
 
 ## Fehlerbehebung
@@ -211,8 +242,12 @@ fortify-scancentral-sast-docker-setup/
 | Problem | Lösung |
 |---|---|
 | `image not found` | `docker login` ausführen – dein Account braucht Zugriff auf `fortifydocker` |
+| `SCANCENTRAL_CONFIG_SSC_URL is required` | `.env` Datei prüfen – `SCANCENTRAL_CONFIG_SSC_URL` muss gesetzt sein |
+| `SCANCENTRAL_URL environment variable is required` | `.env` Datei prüfen – `SCANCENTRAL_URL` muss gesetzt sein |
 | Controller startet nicht | Prüfe die Logs: `docker compose logs sast-ctrl` |
-| Worker verbindet sich nicht | Prüfe ob Auth-Token in SSC und `.env` übereinstimmen |
+| Worker verbindet sich nicht | Auth-Token in SSC und in `volumes/secrets/` müssen übereinstimmen |
 | DB-Migration schlägt fehl | `volumes/data` Verzeichnis löschen und neu starten |
-| SSC nicht erreichbar | Stelle sicher, dass SSC im selben Docker-Netzwerk (`fortify`) läuft |
+| SSC nicht erreichbar | Stelle sicher, dass SSC im selben Docker-Netzwerk läuft (`docker network ls`) |
 | Netzwerk existiert nicht | `docker network create fortify` ausführen |
+| Platform-Warnung (linux/amd64) | Normal auf Apple Silicon (M1/M2/M3) – läuft über Rosetta-Emulation |
+| Test Connection schlägt fehl | Prüfe ob Controller läuft (`docker compose ps`) und die URL korrekt ist |

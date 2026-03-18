@@ -71,12 +71,18 @@ echo ""
 
 # --- 4. Auth-Token generieren -----------------------------------------------
 echo -e "${BOLD}[4/8] Auth-Token generieren...${NC}"
-AUTHTOKEN_FILE="volumes/secrets/scancentral-authtoken"
+AUTHTOKEN_FILE="volumes/secrets/scancentral-worker-auth-token"
 if [ ! -f "$AUTHTOKEN_FILE" ]; then
-    openssl rand -hex 32 > "$AUTHTOKEN_FILE"
-    echo "  ✓ Auth-Token generiert: $AUTHTOKEN_FILE"
+    AUTH_TOKEN=$(openssl rand -hex 32)
+    # Das gleiche Token wird für Worker, Client und SSC-Secret verwendet
+    echo -n "$AUTH_TOKEN" > "volumes/secrets/scancentral-worker-auth-token"
+    echo -n "$AUTH_TOKEN" > "volumes/secrets/scancentral-client-auth-token"
+    echo -n "$AUTH_TOKEN" > "volumes/secrets/scancentral-ssc-scancentral-ctrl-secret"
+    echo "  ✓ Auth-Token generiert"
+    echo ""
     echo -e "${YELLOW}  ⚠ WICHTIG: Dieses Token muss auch in der SSC-Administration${NC}"
     echo -e "${YELLOW}    unter ScanCentral SAST eingetragen werden.${NC}"
+    echo -e "${YELLOW}    Token: ${AUTH_TOKEN}${NC}"
 else
     echo "  → Auth-Token existiert bereits, überspringe"
 fi
@@ -84,30 +90,32 @@ echo ""
 
 # --- 5. HTTPS-Zertifikat erstellen ------------------------------------------
 echo -e "${BOLD}[5/8] HTTPS-Zertifikat für Controller erstellen...${NC}"
-KEYSTORE_FILE="volumes/secrets/scancentral-keystore.pfx"
+KEYSTORE_FILE="volumes/secrets/httpKeystore.jks"
 KEYSTORE_PW_FILE="volumes/secrets/keystore_password"
-TRUSTSTORE_FILE="volumes/secrets/scancentral-truststore.jks"
+TRUSTSTORE_FILE="volumes/secrets/truststore.jks"
 TRUSTSTORE_PW_FILE="volumes/secrets/truststore_password"
 
 if [ ! -f "$KEYSTORE_FILE" ]; then
     KEYSTORE_PASSWORD=$(openssl rand -base64 24)
     echo -n "$KEYSTORE_PASSWORD" > "$KEYSTORE_PW_FILE"
 
+    # JKS Keystore für den Controller
     keytool -genkeypair \
         -alias scancentral \
         -keyalg RSA \
         -keysize 2048 \
         -validity 365 \
-        -storetype PKCS12 \
+        -storetype JKS \
         -keystore "$KEYSTORE_FILE" \
         -storepass "$KEYSTORE_PASSWORD" \
+        -keypass "$KEYSTORE_PASSWORD" \
         -dname "CN=sast-ctrl, OU=Fortify, O=OpenText, L=Munich, ST=Bavaria, C=DE" \
         -ext "SAN=DNS:sast-ctrl,DNS:localhost,IP:127.0.0.1" \
         2>/dev/null
 
     echo "  ✓ Keystore erstellt: $KEYSTORE_FILE"
 
-    # Truststore für Worker erstellen (enthält das Controller-Zertifikat)
+    # Zertifikat exportieren und Truststore für Worker erstellen
     keytool -exportcert \
         -alias scancentral \
         -keystore "$KEYSTORE_FILE" \
@@ -183,9 +191,11 @@ if [[ "$START_NOW" =~ ^[jJyY]$ ]]; then
     echo -e "${YELLOW}  Nächste Schritte:${NC}"
     echo "  1. Öffne die SSC-Administration unter https://localhost:8443"
     echo "  2. Gehe zu Administration → Configuration → ScanCentral SAST"
-    echo "  3. Aktiviere ScanCentral SAST und trage die Controller-URL ein:"
-    echo "     https://sast-ctrl:8443/scancentral-ctrl"
-    echo "  4. Trage das Auth-Token ein (siehe: volumes/secrets/scancentral-authtoken)"
+    echo "  3. Aktiviere ScanCentral SAST und trage folgende Werte ein:"
+    echo "     - ScanCentral SAST URL: https://sast-ctrl:8443/scancentral-ctrl"
+    echo "     - SSC shared secret:    (Inhalt von volumes/secrets/scancentral-ssc-scancentral-ctrl-secret)"
+    echo "     - Worker auth token:    (Inhalt von volumes/secrets/scancentral-worker-auth-token)"
+    echo "  4. Klicke auf 'Test Connection' und dann 'Save'"
     echo ""
     echo "  Logs anzeigen:    $COMPOSE_CMD logs -f"
     echo "  Container stoppen: $COMPOSE_CMD down"
