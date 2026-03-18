@@ -140,8 +140,88 @@ else
 fi
 echo ""
 
-# --- 6. Verzeichnisse erstellen ---------------------------------------------
-echo -e "${BOLD}[6/8] Verzeichnisse erstellen...${NC}"
+# --- 6. SSL-Trust mit SSC konfigurieren --------------------------------------
+echo -e "${BOLD}[6/10] SSL-Trust zwischen Controller und SSC konfigurieren...${NC}"
+
+# SSC-Secrets-Verzeichnis finden
+SSC_SECRETS=""
+for candidate in "../fortify-ssc-docker-setup/ssc-webapp/secrets" "../../fortify-ssc-docker-setup/ssc-webapp/secrets"; do
+    if [ -d "$candidate" ]; then
+        SSC_SECRETS="$candidate"
+        break
+    fi
+done
+
+if [ -z "$SSC_SECRETS" ]; then
+    echo ""
+    read -p "  Pfad zum SSC-Secrets-Verzeichnis (z.B. ../fortify-ssc-docker-setup/ssc-webapp/secrets): " SSC_SECRETS
+fi
+
+if [ -d "$SSC_SECRETS" ]; then
+    KEYSTORE_PASSWORD=$(cat "$KEYSTORE_PW_FILE")
+    TRUSTSTORE_PASSWORD=$(cat "$TRUSTSTORE_PW_FILE")
+
+    # A) Controller-Cert → SSC-Truststore (damit SSC dem Controller vertraut)
+    keytool -exportcert -alias scancentral \
+        -keystore "$KEYSTORE_FILE" \
+        -storepass "$KEYSTORE_PASSWORD" \
+        -file "/tmp/scancentral-ctrl-cert.pem" -rfc 2>/dev/null
+
+    # SSC-Truststore erstellen oder erweitern (basiert auf System-cacerts)
+    if [ ! -f "$SSC_SECRETS/truststore.jks" ]; then
+        # Versuche cacerts aus dem SSC-Container zu kopieren
+        if docker inspect ssc-webapp &>/dev/null; then
+            docker exec ssc-webapp cat /etc/pki/java/cacerts > "$SSC_SECRETS/truststore.jks" 2>/dev/null || \
+            keytool -genkeypair -alias dummy -keystore "$SSC_SECRETS/truststore.jks" -storepass changeit -keypass changeit -dname "CN=dummy" 2>/dev/null && \
+            keytool -delete -alias dummy -keystore "$SSC_SECRETS/truststore.jks" -storepass changeit 2>/dev/null
+        else
+            keytool -genkeypair -alias dummy -keystore "$SSC_SECRETS/truststore.jks" -storepass changeit -keypass changeit -dname "CN=dummy" 2>/dev/null
+            keytool -delete -alias dummy -keystore "$SSC_SECRETS/truststore.jks" -storepass changeit 2>/dev/null
+        fi
+    fi
+
+    keytool -importcert -alias scancentral-ctrl \
+        -file "/tmp/scancentral-ctrl-cert.pem" \
+        -keystore "$SSC_SECRETS/truststore.jks" \
+        -storepass changeit -noprompt 2>/dev/null && \
+    echo "  ✓ Controller-Zertifikat in SSC-Truststore importiert"
+
+    echo -n "changeit" > "$SSC_SECRETS/truststore_password"
+    rm -f "/tmp/scancentral-ctrl-cert.pem"
+
+    # B) SSC-Cert → Controller-Truststore (damit Controller dem SSC vertraut)
+    SSC_KEYSTORE=$(ls "$SSC_SECRETS"/ssc-keystore.* 2>/dev/null | head -1)
+    if [ -n "$SSC_KEYSTORE" ] && [ -f "$SSC_SECRETS/keystore_password" ]; then
+        SSC_KS_PW=$(cat "$SSC_SECRETS/keystore_password")
+        keytool -exportcert -alias ssc-server \
+            -keystore "$SSC_KEYSTORE" \
+            -storepass "$SSC_KS_PW" \
+            -file "/tmp/ssc-cert.pem" -rfc 2>/dev/null
+
+        keytool -importcert -alias ssc-webapp \
+            -file "/tmp/ssc-cert.pem" \
+            -keystore "$TRUSTSTORE_FILE" \
+            -storepass "$TRUSTSTORE_PASSWORD" -noprompt 2>/dev/null && \
+        echo "  ✓ SSC-Zertifikat in Controller-Truststore importiert"
+
+        rm -f "/tmp/ssc-cert.pem"
+    else
+        echo -e "${YELLOW}  ⚠ SSC-Keystore nicht gefunden – überspringe SSC-Cert-Import${NC}"
+        echo "    Falls der Controller SSC nicht erreichen kann, importiere das SSC-Zertifikat manuell."
+    fi
+
+    echo ""
+    echo -e "${YELLOW}  ⚠ WICHTIG: Füge folgende Zeilen zur SSC docker-compose.yml hinzu:${NC}"
+    echo "     JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks"
+    echo "     JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password"
+    echo "    und starte SSC anschließend mit 'docker compose up -d' neu."
+else
+    echo -e "${YELLOW}  ⚠ SSC-Secrets-Verzeichnis nicht gefunden – SSL-Trust muss manuell konfiguriert werden.${NC}"
+fi
+echo ""
+
+# --- 7. Verzeichnisse erstellen ---------------------------------------------
+echo -e "${BOLD}[7/10] Verzeichnisse erstellen...${NC}"
 mkdir -p volumes/data
 mkdir -p volumes/secrets
 
@@ -155,7 +235,7 @@ echo "  ✓ Verzeichnisse bereit"
 echo ""
 
 # --- 7. Docker-Images prüfen ------------------------------------------------
-echo -e "${BOLD}[7/8] Docker-Images prüfen...${NC}"
+echo -e "${BOLD}[8/10] Docker-Images prüfen...${NC}"
 echo "  Versuche Images zu pullen (Docker Hub Login für 'fortifydocker' erforderlich)..."
 if $COMPOSE_CMD pull 2>/dev/null; then
     echo "  ✓ Images erfolgreich geladen"
@@ -168,7 +248,7 @@ fi
 echo ""
 
 # --- 8. Docker-Netzwerk und Start -------------------------------------------
-echo -e "${BOLD}[8/8] Starten...${NC}"
+echo -e "${BOLD}[9/10] Starten...${NC}"
 
 # Netzwerk erstellen, falls es nicht existiert
 NETWORK_NAME=$(grep DOCKER_NETWORK_NAME .env 2>/dev/null | grep -v '^#' | cut -d= -f2 || echo "fortify")

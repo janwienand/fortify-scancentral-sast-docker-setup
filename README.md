@@ -45,29 +45,7 @@ Das Setup-Skript führt automatisch durch alle Schritte: Konfiguration erstellen
 
 ### 2. SSC Truststore konfigurieren
 
-Da der Controller ein selbstsigniertes Zertifikat verwendet, muss SSC diesem vertrauen. Das Controller-Zertifikat muss in den SSC-Truststore importiert werden:
-
-```bash
-# Controller-Zertifikat exportieren
-CTRL_KEYSTORE_PW=$(cat volumes/secrets/keystore_password)
-keytool -exportcert -alias scancentral \
-    -keystore volumes/secrets/httpKeystore.jks \
-    -storepass "$CTRL_KEYSTORE_PW" \
-    -file /tmp/scancentral-ctrl-cert.pem -rfc
-
-# Zertifikat in den SSC-Truststore importieren
-# (Pfad zum SSC-Secrets-Verzeichnis entsprechend anpassen)
-SSC_SECRETS=../fortify-ssc-docker-setup/ssc-webapp/secrets
-keytool -importcert -alias scancentral-ctrl \
-    -file /tmp/scancentral-ctrl-cert.pem \
-    -keystore "$SSC_SECRETS/truststore.jks" \
-    -storepass changeit -noprompt
-
-echo -n "changeit" > "$SSC_SECRETS/truststore_password"
-rm /tmp/scancentral-ctrl-cert.pem
-```
-
-Anschließend in der SSC `docker-compose.yml` die Truststore-Umgebungsvariablen ergänzen:
+Das Setup-Skript konfiguriert den SSL-Trust automatisch (bidirektional: SSC vertraut dem Controller und umgekehrt). Danach muss nur noch die SSC `docker-compose.yml` um folgende Umgebungsvariablen ergänzt werden:
 
 ```yaml
 environment:
@@ -148,13 +126,19 @@ mvn clean package -DskipTests
 ### 3. Bei SSC anmelden
 
 ```bash
+CLIENT_TOKEN=$(cat volumes/secrets/scancentral-client-auth-token)
+
 fcli ssc session login \
     --url https://localhost:8443 \
-    -u admin -p admin \
-    -k
+    -u admin -p <SSC_PASSWORD> \
+    -k \
+    --sc-sast-url https://localhost:9443/scancentral-ctrl \
+    -c "$CLIENT_TOKEN"
 ```
 
-Das `-k` Flag deaktiviert die SSL-Zertifikatsprüfung (notwendig bei selbstsignierten Zertifikaten).
+- `-k` deaktiviert die SSL-Zertifikatsprüfung (notwendig bei selbstsignierten Zertifikaten)
+- `--sc-sast-url` überschreibt die interne Docker-URL mit der extern erreichbaren URL
+- `-c` übergibt das ScanCentral Client Auth-Token
 
 ### 4. Application Version in SSC erstellen
 
@@ -179,16 +163,8 @@ Dieser Befehl erstellt ein optimiertes ZIP-Paket mit dem relevanten Source Code 
 ```bash
 fcli sc-sast scan start \
     --publish-to IWA-Java:1.0 \
-    -p IWA-Java-package.zip \
-    --sensor-version 25.4 \
-    --ssc-ci-token <CLIENT_AUTH_TOKEN> \
+    -f IWA-Java-package.zip \
     --store myScan
-```
-
-Den `CLIENT_AUTH_TOKEN` findest du in der Datei `volumes/secrets/scancentral-client-auth-token`:
-
-```bash
-cat volumes/secrets/scancentral-client-auth-token
 ```
 
 ### 7. Auf Scan-Ergebnis warten
@@ -201,10 +177,10 @@ fcli sc-sast scan wait-for ::myScan:: --timeout 1h --interval 30s
 
 ```bash
 # Anzahl der Findings anzeigen
-fcli ssc issue count --appversion IWA-Java:1.0
+fcli ssc issue count --av IWA-Java:1.0
 
 # Findings auflisten
-fcli ssc issue list --appversion IWA-Java:1.0
+fcli ssc issue list --av IWA-Java:1.0
 ```
 
 Die Ergebnisse sind auch im SSC Web-Interface unter **Applications → IWA-Java → 1.0** sichtbar.
