@@ -247,18 +247,31 @@ else
 fi
 echo ""
 
-# --- 8. Docker-Netzwerk und Start -------------------------------------------
-echo -e "${BOLD}[9/10] Starten...${NC}"
+# --- 9. Docker-Netzwerk erkennen und konfigurieren --------------------------
+echo -e "${BOLD}[9/10] Docker-Netzwerk konfigurieren...${NC}"
 
-# Netzwerk erstellen, falls es nicht existiert
-NETWORK_NAME=$(grep DOCKER_NETWORK_NAME .env 2>/dev/null | grep -v '^#' | cut -d= -f2 || echo "fortify")
-NETWORK_NAME=${NETWORK_NAME:-fortify}
-if ! docker network inspect "$NETWORK_NAME" &>/dev/null; then
-    docker network create "$NETWORK_NAME"
-    echo "  ✓ Docker-Netzwerk '$NETWORK_NAME' erstellt"
-else
-    echo "  → Docker-Netzwerk '$NETWORK_NAME' existiert bereits"
+# Automatisch das SSC-Netzwerk erkennen
+SSC_NETWORK=$(docker network ls --format "{{.Name}}" 2>/dev/null | grep -i "ssc.*fortify\|fortify.*ssc" | head -1)
+if [ -z "$SSC_NETWORK" ]; then
+    SSC_NETWORK=$(docker network ls --format "{{.Name}}" 2>/dev/null | grep -i "fortify" | grep -v "^fortify-demo$" | head -1)
 fi
+
+if [ -n "$SSC_NETWORK" ]; then
+    echo "  → SSC-Netzwerk erkannt: $SSC_NETWORK"
+    sed -i.bak "s/DOCKER_NETWORK_NAME=.*/DOCKER_NETWORK_NAME=$SSC_NETWORK/" .env
+    rm -f .env.bak
+    NETWORK_NAME="$SSC_NETWORK"
+else
+    NETWORK_NAME=$(grep DOCKER_NETWORK_NAME .env 2>/dev/null | grep -v '^#' | cut -d= -f2 || echo "fortify")
+    NETWORK_NAME=${NETWORK_NAME:-fortify}
+    if ! docker network inspect "$NETWORK_NAME" &>/dev/null; then
+        docker network create "$NETWORK_NAME"
+        echo "  ✓ Docker-Netzwerk '$NETWORK_NAME' erstellt"
+    else
+        echo "  → Docker-Netzwerk '$NETWORK_NAME' existiert bereits"
+    fi
+fi
+echo "  ✓ Netzwerk: $NETWORK_NAME"
 
 read -p "  Container jetzt starten? (j/n) " START_NOW
 if [[ "$START_NOW" =~ ^[jJyY]$ ]]; then
@@ -269,13 +282,20 @@ if [[ "$START_NOW" =~ ^[jJyY]$ ]]; then
     echo "  ScanCentral SAST Controller: https://localhost:9443/scancentral-ctrl"
     echo ""
     echo -e "${YELLOW}  Nächste Schritte:${NC}"
-    echo "  1. Öffne die SSC-Administration unter https://localhost:8443"
-    echo "  2. Gehe zu Administration → Configuration → ScanCentral SAST"
-    echo "  3. Aktiviere ScanCentral SAST und trage folgende Werte ein:"
-    echo "     - ScanCentral SAST URL: https://sast-ctrl:8443/scancentral-ctrl"
-    echo "     - SSC shared secret:    (Inhalt von volumes/secrets/scancentral-ssc-scancentral-ctrl-secret)"
-    echo "     - Worker auth token:    (Inhalt von volumes/secrets/scancentral-worker-auth-token)"
-    echo "  4. Klicke auf 'Test Connection' und dann 'Save'"
+    echo ""
+    echo "  1. SSC docker-compose.yml: Folgende Zeilen unter 'environment' ergänzen:"
+    echo "       JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks"
+    echo "       JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password"
+    echo "     Dann SSC neu starten: docker compose up -d"
+    echo ""
+    echo "  2. SSC-Administration (https://localhost:8443):"
+    echo "     → Administration → Configuration → ScanCentral SAST"
+    echo "     → Enable ScanCentral SAST aktivieren"
+    echo "     → ScanCentral Controller URL: https://sast-ctrl:8443/scancentral-ctrl"
+    echo "     → SSC shared secret: $(cat volumes/secrets/scancentral-ssc-scancentral-ctrl-secret 2>/dev/null)"
+    echo "     → Save klicken"
+    echo ""
+    echo "  3. SSC neu starten: docker compose restart ssc-webapp"
     echo ""
     echo "  Logs anzeigen:    $COMPOSE_CMD logs -f"
     echo "  Container stoppen: $COMPOSE_CMD down"
