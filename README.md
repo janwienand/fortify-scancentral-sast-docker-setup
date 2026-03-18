@@ -107,9 +107,39 @@ Um das Setup zu testen, verwenden wir die [IWA-Java](https://github.com/fortify/
 ### Voraussetzungen
 
 - **Maven** installiert (für den Build der Demo-App)
-- **fcli** installiert (Download: https://github.com/fortify/fcli/releases)
+- **fcli** (Fortify CLI) installiert – siehe nächster Abschnitt
 
-### 1. ScanCentral Client installieren
+### 1. fcli und ScanCentral Client installieren
+
+**fcli installieren (macOS mit Homebrew):**
+
+```bash
+brew install fortify/tap/fcli
+```
+
+**fcli installieren (Linux/macOS manuell):**
+
+```bash
+# Aktuelle Version herunterladen (Beispiel für macOS ARM)
+curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-mac_arm64.tar.gz | tar xz
+sudo mv fcli /usr/local/bin/
+
+# Alternativ für Linux x64:
+# curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-linux_x64.tar.gz | tar xz
+```
+
+**fcli installieren (Windows):**
+
+```powershell
+# Installer herunterladen und ausführen
+Invoke-WebRequest -Uri https://github.com/fortify/fcli/releases/latest/download/fcli-windows_x64.zip -OutFile fcli.zip
+Expand-Archive fcli.zip -DestinationPath C:\fcli
+# C:\fcli zum PATH hinzufügen
+```
+
+Alle Downloads: https://github.com/fortify/fcli/releases
+
+**ScanCentral Client über fcli installieren:**
 
 ```bash
 fcli tool sc-client install -v latest -y
@@ -173,7 +203,21 @@ fcli sc-sast scan start \
 fcli sc-sast scan wait-for ::myScan:: --timeout 1h --interval 30s
 ```
 
-### 8. Ergebnisse prüfen
+### 8. Erstes Artefakt genehmigen
+
+Beim ersten Upload muss das Scan-Artefakt in SSC genehmigt werden. Das ist ein einmaliger Schritt pro Application Version und dient als Sicherheitsmaßnahme:
+
+```bash
+# Artefakt-ID ermitteln
+fcli ssc artifact list --av IWA-Java:1.0
+
+# Artefakt genehmigen (ID aus dem vorherigen Befehl)
+fcli ssc artifact approve <ARTIFACT_ID>
+```
+
+Nach dem Approve wird das Artefakt verarbeitet und die Findings erscheinen in SSC.
+
+### 9. Ergebnisse prüfen
 
 ```bash
 # Anzahl der Findings anzeigen
@@ -185,7 +229,7 @@ fcli ssc issue list --av IWA-Java:1.0
 
 Die Ergebnisse sind auch im SSC Web-Interface unter **Applications → IWA-Java → 1.0** sichtbar.
 
-### 9. Aufräumen (optional)
+### 10. Aufräumen (optional)
 
 ```bash
 fcli ssc session logout
