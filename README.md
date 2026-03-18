@@ -140,33 +140,84 @@ docker login
 docker compose up -d
 ```
 
-### 8. ScanCentral SAST in SSC aktivieren
+### 8. SSC Truststore konfigurieren (wichtig!)
 
-Nach dem Start der Container muss ScanCentral SAST in der SSC-Administration konfiguriert werden:
+Da der ScanCentral SAST Controller ein selbstsigniertes Zertifikat verwendet, muss SSC diesem Zertifikat vertrauen. Dafür wird ein JVM Truststore benötigt:
 
-1. Öffne SSC im Browser: **https://localhost:8443**
-2. Melde dich an (Standard: `admin` / `admin`)
-3. Navigiere zu **Administration** (Zahnrad-Symbol oben rechts)
-4. Klicke links auf **Configuration** → **ScanCentral SAST**
-5. Aktiviere den Schalter **Enable ScanCentral SAST**
-6. Trage folgende Werte ein:
+```bash
+# Controller-Zertifikat exportieren
+CTRL_KEYSTORE_PW=$(cat volumes/secrets/keystore_password)
+keytool -exportcert -alias scancentral \
+    -keystore volumes/secrets/httpKeystore.jks \
+    -storepass "$CTRL_KEYSTORE_PW" \
+    -file /tmp/scancentral-ctrl-cert.pem -rfc
+
+# Zertifikat in den SSC-Truststore importieren
+# (den Pfad zum SSC-Secrets-Verzeichnis entsprechend anpassen)
+SSC_SECRETS=../fortify-ssc-docker-setup/ssc-webapp/secrets
+keytool -importcert -alias scancentral-ctrl \
+    -file /tmp/scancentral-ctrl-cert.pem \
+    -keystore "$SSC_SECRETS/truststore.jks" \
+    -storepass changeit -noprompt
+
+echo -n "changeit" > "$SSC_SECRETS/truststore_password"
+rm /tmp/scancentral-ctrl-cert.pem
+```
+
+Dann in der SSC `docker-compose.yml` die Truststore-Umgebungsvariablen ergänzen:
+
+```yaml
+environment:
+  JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks
+  JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password
+```
+
+Anschließend SSC neu starten:
+
+```bash
+cd ../fortify-ssc-docker-setup
+docker compose up -d
+```
+
+### 9. ScanCentral SAST in SSC aktivieren
+
+Nach dem Start der Container muss ScanCentral SAST in der SSC-Administration konfiguriert werden.
+
+**Schritt 1:** Öffne SSC im Browser unter **https://localhost:8443** und navigiere zu **Administration → Configuration → ScanCentral SAST**:
+
+![ScanCentral SAST Konfiguration](docs/images/ssc-scancentral-sast-config.png)
+
+**Schritt 2:** Aktiviere **Enable ScanCentral SAST** und trage folgende Werte ein:
 
 | Feld | Wert |
 |---|---|
-| **ScanCentral SAST URL** | `https://sast-ctrl:8443/scancentral-ctrl` |
-| **SSC shared secret** | Inhalt von `volumes/secrets/scancentral-ssc-scancentral-ctrl-secret` |
-| **Worker auth token** | Inhalt von `volumes/secrets/scancentral-worker-auth-token` |
+| **ScanCentral Controller URL** | `https://sast-ctrl:8443/scancentral-ctrl` |
+| **SSC and ScanCentral Controller shared secret** | Inhalt von `volumes/secrets/scancentral-ssc-scancentral-ctrl-secret` |
+
+![ScanCentral SAST Konfiguration ausgefüllt](docs/images/ssc-scancentral-sast-config-filled.png)
 
 Die Token-Werte kannst du mit folgendem Befehl auslesen:
 
 ```bash
-cat volumes/secrets/scancentral-worker-auth-token
+cat volumes/secrets/scancentral-ssc-scancentral-ctrl-secret
 ```
 
-7. Klicke auf **Test Connection** – es sollte eine Erfolgsmeldung erscheinen
-8. Klicke auf **Save**
+Klicke auf **Save**.
 
-Nach der Konfiguration sollte unter **Administration → ScanCentral SAST** der Worker als **Active** angezeigt werden.
+**Schritt 3: SSC neu starten (wichtig!)**
+
+Die Änderungen werden erst nach einem Neustart des SSC-Servers wirksam:
+
+```bash
+cd ../fortify-ssc-docker-setup
+docker compose restart ssc-webapp
+```
+
+**Schritt 4:** Nach dem Restart erscheint der **ScanCentral**-Tab in der oberen Navigation:
+
+![ScanCentral Tab](docs/images/ssc-scancentral-tab.png)
+
+Unter **ScanCentral** sollten jetzt der Controller und der Worker als **Active** angezeigt werden.
 
 ## Architektur
 
