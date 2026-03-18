@@ -1,0 +1,25 @@
+# Secrets
+*.license
+*.key
+*.pfx
+*.jks
+*.pem
+keystore_password
+truststore_password
+secret.key
+scancentral-authtoken
+
+# Environment
+.env
+
+# Data volumes
+volumes/data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

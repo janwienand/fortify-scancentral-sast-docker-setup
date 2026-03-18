@@ -1,0 +1,50 @@
+services:
+  db-migration:
+    container_name: scancentral-sast-db-migration
+    image: fortifydocker/scancentral-sast-db-migration:${SCANCENTRAL_SAST_VERSION:-25.4.0}
+    env_file: .env
+    volumes:
+      - './volumes/data:/fortify:Z'
+      - './volumes/secrets:/etc/secrets:Z'
+    networks:
+      - fortify
+
+  sast-ctrl:
+    container_name: sast-ctrl
+    depends_on:
+      db-migration:
+        condition: service_completed_successfully
+    image: fortifydocker/scancentral-sast-controller:${SCANCENTRAL_SAST_VERSION:-25.4.0}
+    restart: always
+    env_file: .env
+    ports:
+      - '${SCANCENTRAL_HOST_PORT:-9443}:8443'
+    volumes:
+      - './volumes/data:/fortify:Z'
+      - './volumes/secrets:/etc/secrets:Z'
+      - type: tmpfs
+        target: /app/etc
+        tmpfs:
+          size: 1048576
+    networks:
+      - fortify
+
+  sast-worker:
+    container_name: sast-worker
+    depends_on:
+      sast-ctrl:
+        condition: service_started
+    image: fortifydocker/scancentral-sast-sensor:${SCANCENTRAL_SAST_VERSION:-25.4.0}
+    restart: always
+    env_file: .env
+    volumes:
+      - './volumes/secrets/fortify.license:/app/sca/fortify.license:Z'
+      - './volumes/secrets:/etc/secrets:Z'
+      - './volumes/data:/fortify:Z'
+    networks:
+      - fortify
+
+networks:
+  fortify:
+    name: ${DOCKER_NETWORK_NAME:-fortify}
+    external: true
