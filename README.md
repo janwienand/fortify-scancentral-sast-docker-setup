@@ -103,33 +103,23 @@ Um das Setup zu testen, verwenden wir die [IWA-Java](https://github.com/fortify/
 
 ### 1. fcli und ScanCentral Client installieren
 
-**fcli installieren (macOS mit Homebrew):**
+**fcli installieren:**
 
 ```bash
-brew install fortify/tap/fcli
-```
-
-**fcli installieren (Linux/macOS manuell):**
-
-```bash
-# Aktuelle Version herunterladen (Beispiel für macOS ARM)
+# macOS (ARM/Apple Silicon)
 curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-mac_arm64.tar.gz | tar xz
 sudo mv fcli /usr/local/bin/
 
-# Alternativ für Linux x64:
-# curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-linux_x64.tar.gz | tar xz
+# macOS (Intel)
+curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-mac_x64.tar.gz | tar xz
+sudo mv fcli /usr/local/bin/
+
+# Linux (x64)
+curl -sL https://github.com/fortify/fcli/releases/latest/download/fcli-linux_x64.tar.gz | tar xz
+sudo mv fcli /usr/local/bin/
 ```
 
-**fcli installieren (Windows):**
-
-```powershell
-# Installer herunterladen und ausführen
-Invoke-WebRequest -Uri https://github.com/fortify/fcli/releases/latest/download/fcli-windows_x64.zip -OutFile fcli.zip
-Expand-Archive fcli.zip -DestinationPath C:\fcli
-# C:\fcli zum PATH hinzufügen
-```
-
-Alle Downloads: https://github.com/fortify/fcli/releases
+Alle Plattformen und Versionen: https://github.com/fortify/fcli/releases
 
 **ScanCentral Client über fcli installieren:**
 
