@@ -210,11 +210,25 @@ if [ -d "$SSC_SECRETS" ]; then
         echo "    Falls der Controller SSC nicht erreichen kann, importiere das SSC-Zertifikat manuell."
     fi
 
-    echo ""
-    echo -e "${YELLOW}  ⚠ WICHTIG: Füge folgende Zeilen zur SSC docker-compose.yml hinzu:${NC}"
-    echo "     JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks"
-    echo "     JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password"
-    echo "    und starte SSC anschließend mit 'docker compose up -d' neu."
+    # SSC docker-compose.yml automatisch patchen (JVM_TRUSTSTORE Zeilen einfügen)
+    SSC_COMPOSE="$(dirname "$SSC_SECRETS")/../docker-compose.yml"
+    if [ -f "$SSC_COMPOSE" ]; then
+        if ! grep -q "JVM_TRUSTSTORE_FILE" "$SSC_COMPOSE"; then
+            # Zeilen nach COM_FORTIFY_SSC_SECRETKEY einfügen
+            sed -i.bak '/COM_FORTIFY_SSC_SECRETKEY/a\
+      JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks\
+      JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password' "$SSC_COMPOSE"
+            rm -f "$SSC_COMPOSE.bak"
+            echo "  ✓ SSC docker-compose.yml aktualisiert (JVM Truststore hinzugefügt)"
+            echo -e "${YELLOW}  ⚠ Bitte SSC neu starten: cd $(dirname "$SSC_COMPOSE") && docker compose up -d${NC}"
+        else
+            echo "  → SSC docker-compose.yml enthält bereits JVM Truststore Konfiguration"
+        fi
+    else
+        echo -e "${YELLOW}  ⚠ SSC docker-compose.yml nicht gefunden – bitte manuell ergänzen:${NC}"
+        echo "     JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks"
+        echo "     JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password"
+    fi
 else
     echo -e "${YELLOW}  ⚠ SSC-Secrets-Verzeichnis nicht gefunden – SSL-Trust muss manuell konfiguriert werden.${NC}"
 fi

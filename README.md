@@ -43,17 +43,9 @@ docker login
 
 Das Setup-Skript führt automatisch durch alle Schritte: Konfiguration erstellen, Auth-Token generieren, HTTPS-Zertifikate erstellen, SSL-Trust mit SSC konfigurieren, Images pullen und Container starten.
 
-### 2. SSC Truststore konfigurieren
+### 2. SSC neu starten
 
-Das Setup-Skript konfiguriert den SSL-Trust automatisch (bidirektional: SSC vertraut dem Controller und umgekehrt). Danach muss nur noch die SSC `docker-compose.yml` um folgende Umgebungsvariablen ergänzt werden:
-
-```yaml
-environment:
-  JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks
-  JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password
-```
-
-SSC mit der neuen Konfiguration neu starten:
+Das Setup-Skript konfiguriert den SSL-Trust automatisch und aktualisiert die SSC `docker-compose.yml`. Danach muss SSC nur noch neu gestartet werden:
 
 ```bash
 cd ../fortify-ssc-docker-setup
