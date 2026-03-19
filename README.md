@@ -123,6 +123,16 @@ Alle Plattformen und Versionen: https://github.com/fortify/fcli/releases
 
 Video-Anleitung zur Installation und grundlegenden Nutzung von fcli: https://www.youtube.com/watch?v=E0605-AnSRM
 
+**Auto-Completion aktivieren (optional, aber empfohlen):**
+
+```bash
+# Auto-Completion für die aktuelle Shell generieren
+fcli util auto-complete generate
+
+# Oder manuell zur Shell-Konfiguration hinzufügen (zsh)
+echo 'source <(fcli util auto-complete generate)' >> ~/.zshrc && source ~/.zshrc
+```
+
 **ScanCentral Client über fcli installieren:**
 
 ```bash
@@ -218,6 +228,27 @@ Die Ergebnisse sind auch im SSC Web-Interface unter **Applications → IWA-Java 
 ```bash
 fcli ssc session logout
 ```
+
+### fcli Tipps
+
+```bash
+# Hilfe zu jedem Befehl anzeigen
+fcli sc-sast scan start -h
+
+# Ausgabe in verschiedenen Formaten (json, yaml, csv, table)
+fcli ssc issue list --av IWA-Java:1.0 -o json
+fcli ssc issue list --av IWA-Java:1.0 -o csv --to-file=findings.csv
+
+# Ergebnisse filtern mit Queries
+fcli ssc issue list --av IWA-Java:1.0 -q "frilessPriority=='Critical'"
+
+# Variablen zwischen Befehlen weitergeben
+fcli sc-sast scan start -f package.zip --publish-to App:1.0 --store scan
+fcli sc-sast scan wait-for ::scan::
+fcli sc-sast scan status ::scan::
+```
+
+Ausführliche Dokumentation: https://fortify.github.io/fcli
 
 ## Architektur
 
