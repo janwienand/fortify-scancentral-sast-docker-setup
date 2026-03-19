@@ -121,6 +121,8 @@ sudo mv fcli /usr/local/bin/
 
 Alle Plattformen und Versionen: https://github.com/fortify/fcli/releases
 
+Video-Anleitung zur Installation und grundlegenden Nutzung von fcli: https://www.youtube.com/watch?v=E0605-AnSRM
+
 **ScanCentral Client über fcli installieren:**
 
 ```bash
